@@ -3,22 +3,20 @@ import pdfplumber
 import spacy
 import warnings
 import logging
-import os
-import importlib.util
+import importlib
 
-# Suppress warnings and logs
+# === Suppress warnings ===
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
-# === Load spaCy model locally (Streamlit Cloud-safe) ===
-MODEL_DIR = "./model/en_core_web_sm"
-
-if not os.path.isdir(MODEL_DIR):
+# === Load spaCy model with automatic download ===
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
     import spacy.cli
-    spacy.cli.download("en_core_web_sm", "--direct", "--path", "./model")
+    spacy.cli.download("en_core_web_sm")
     importlib.invalidate_caches()
-
-nlp = spacy.load(MODEL_DIR)
+    nlp = spacy.load("en_core_web_sm")
 
 # === Extract text from uploaded PDF ===
 def extract_text_from_pdf(uploaded_file):
@@ -30,7 +28,7 @@ def extract_text_from_pdf(uploaded_file):
                 text += page_text + "\n"
     return text
 
-# === Relevance filter ===
+# === Filter out irrelevant keywords ===
 def is_relevant_keyword(keyword):
     irrelevant = {
         "the needs", "their needs", "a focus", "customer", "user", "project", "projects", "stakeholders",
@@ -43,7 +41,7 @@ def is_relevant_keyword(keyword):
         and not keyword.startswith(("the ", "your ", "our "))
     )
 
-# === Context-aware keyword extraction ===
+# === Extract only technical keywords from useful sentences ===
 def extract_keywords(text):
     doc = nlp(text)
     valid_keywords = set()
@@ -63,7 +61,7 @@ def extract_keywords(text):
                     valid_keywords.add(keyword)
     return valid_keywords
 
-# === Calculate ATS match score ===
+# === Score matching keywords ===
 def calculate_score(resume_keywords, jd_keywords):
     matched_keywords = jd_keywords & resume_keywords
     missing_keywords = jd_keywords - resume_keywords
@@ -72,7 +70,7 @@ def calculate_score(resume_keywords, jd_keywords):
     match_score = round((matched / total) * 100, 2) if total > 0 else 0
     return match_score, matched_keywords, missing_keywords
 
-# === Smart bullet suggestions ===
+# === Suggestion generator ===
 def generate_suggestion(keyword):
     keyword = keyword.lower()
     suggestion_templates = {
@@ -89,38 +87,35 @@ def generate_suggestion(keyword):
         "ci/cd": "✔ Implemented CI/CD pipelines for automated testing and deployment.",
     }
     return suggestion_templates.get(
-        keyword, f"✔ Consider adding a strong bullet point that demonstrates hands-on experience with <b>{keyword}</b>."
+        keyword,
+        f"✔ Consider adding a strong bullet point that demonstrates hands-on experience with <b>{keyword}</b>."
     )
 
-# === Streamlit App UI ===
+# === Streamlit UI ===
 st.set_page_config(page_title="ATS Resume Analyzer", layout="wide")
 st.markdown("<h1 style='color:#2F80ED;'>📄 ATS Resume Analyzer</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#444;'>Upload your resume and paste the job description to get a match score and tailored suggestions to improve it.</p>", unsafe_allow_html=True)
 
-# Upload resume PDF
+# === Upload and input ===
 uploaded_file = st.file_uploader("📎 Upload Your Resume PDF", type=["pdf"])
-
-# Paste job description
 job_description = st.text_area("📋 Paste Job Description Text Here")
 
-# Run analysis
+# === Analyze Button ===
 if uploaded_file and job_description:
     if st.button("🔍 Analyze Resume"):
         with st.spinner("Analyzing your resume..."):
             resume_text = extract_text_from_pdf(uploaded_file)
             resume_keywords = extract_keywords(resume_text)
             jd_keywords = extract_keywords(job_description)
-
             score, matched, missing = calculate_score(resume_keywords, jd_keywords)
 
-        # Score bar
+        # === Display Score ===
         color = "#27ae60" if score >= 75 else "#f39c12" if score >= 50 else "#c0392b"
         st.markdown(f"<h3 style='color:{color}'>✅ Match Score: {score}/100</h3>", unsafe_allow_html=True)
         st.progress(score / 100)
 
         if missing:
             st.warning("### ❌ Missing Keywords")
-
             badges = " ".join([
                 f"<span style='background:#ddd;color:#111;border-radius:8px;padding:6px 10px;margin:2px;display:inline-block;'>{kw}</span>"
                 for kw in list(missing)[:10]
