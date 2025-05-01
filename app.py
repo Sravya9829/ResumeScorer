@@ -3,17 +3,19 @@ import pdfplumber
 import spacy
 import warnings
 import logging
+import importlib.util
 
-# Suppress warnings and noisy PDF logs
+# Suppress warnings and noisy logs
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
-# Load spaCy model with fallback download if not present
+# === Load spaCy model with permission-safe fallback ===
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
     import spacy.cli
     spacy.cli.download("en_core_web_sm")
+    importlib.invalidate_caches()
     nlp = spacy.load("en_core_web_sm")
 
 # === Extract text from uploaded PDF ===
@@ -43,10 +45,8 @@ def is_relevant_keyword(keyword):
 def extract_keywords(text):
     doc = nlp(text)
     valid_keywords = set()
-
     for sent in doc.sents:
         sentence = sent.text.lower()
-
         if any(word in sentence for word in [
             "experience", "proficient", "familiar", "design", "develop", "build",
             "manage", "implement", "hands-on", "expertise", "knowledge", "skills in", "tools like"
@@ -59,10 +59,9 @@ def extract_keywords(text):
                     and is_relevant_keyword(keyword)
                 ):
                     valid_keywords.add(keyword)
-
     return valid_keywords
 
-# === Match score calculation ===
+# === Calculate ATS match score ===
 def calculate_score(resume_keywords, jd_keywords):
     matched_keywords = jd_keywords & resume_keywords
     missing_keywords = jd_keywords - resume_keywords
@@ -87,7 +86,6 @@ def generate_suggestion(keyword):
         "kubernetes": "✔ Managed container orchestration and deployment with Kubernetes.",
         "ci/cd": "✔ Implemented CI/CD pipelines for automated testing and deployment.",
     }
-
     return suggestion_templates.get(
         keyword, f"✔ Consider adding a strong bullet point that demonstrates hands-on experience with <b>{keyword}</b>."
     )
@@ -113,7 +111,7 @@ if uploaded_file and job_description:
 
             score, matched, missing = calculate_score(resume_keywords, jd_keywords)
 
-        # Colored score
+        # Score bar
         color = "#27ae60" if score >= 75 else "#f39c12" if score >= 50 else "#c0392b"
         st.markdown(f"<h3 style='color:{color}'>✅ Match Score: {score}/100</h3>", unsafe_allow_html=True)
         st.progress(score / 100)
@@ -121,14 +119,12 @@ if uploaded_file and job_description:
         if missing:
             st.warning("### ❌ Missing Keywords")
 
-            # Display missing keywords as badges
             badges = " ".join([
                 f"<span style='background:#ddd;color:#111;border-radius:8px;padding:6px 10px;margin:2px;display:inline-block;'>{kw}</span>"
                 for kw in list(missing)[:10]
             ])
             st.markdown(badges, unsafe_allow_html=True)
 
-            # Suggestions
             st.info("### ✍️ Suggestions to Improve Your Resume")
             shown = 0
             for keyword in list(missing):
