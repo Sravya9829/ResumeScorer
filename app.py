@@ -8,8 +8,13 @@ import logging
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
-# Load spaCy model
-nlp = spacy.load("en_core_web_sm")
+# Load spaCy model with fallback download if not present
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    import spacy.cli
+    spacy.cli.download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
 
 # === Extract text from uploaded PDF ===
 def extract_text_from_pdf(uploaded_file):
