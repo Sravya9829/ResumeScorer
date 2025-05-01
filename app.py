@@ -5,13 +5,17 @@ import os
 import warnings
 import logging
 
-# === Suppress warnings and logs ===
+# === Suppress PDF and NLP warnings ===
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
-# === Load spaCy model from local directory ===
+# === Load spaCy model from local folder ===
 model_path = os.path.join(os.path.dirname(__file__), "en_core_web_sm")
-nlp = spacy.load(model_path)
+try:
+    nlp = spacy.load(model_path)
+except Exception as e:
+    st.error("❌ Failed to load the spaCy model. Please ensure the 'en_core_web_sm' folder is correctly extracted and includes 'config.cfg'.")
+    st.stop()
 
 # === Extract text from uploaded PDF ===
 def extract_text_from_pdf(uploaded_file):
@@ -23,7 +27,7 @@ def extract_text_from_pdf(uploaded_file):
                 text += page_text + "\n"
     return text
 
-# === Relevance filter for keywords ===
+# === Relevance filter ===
 def is_relevant_keyword(keyword):
     irrelevant = {
         "the needs", "their needs", "a focus", "customer", "user", "project", "projects", "stakeholders",
@@ -36,7 +40,7 @@ def is_relevant_keyword(keyword):
         and not keyword.startswith(("the ", "your ", "our "))
     )
 
-# === Extract keywords from technical sentences ===
+# === Extract relevant keywords ===
 def extract_keywords(text):
     doc = nlp(text)
     valid_keywords = set()
@@ -56,7 +60,7 @@ def extract_keywords(text):
                     valid_keywords.add(keyword)
     return valid_keywords
 
-# === Calculate score and missing terms ===
+# === Match score logic ===
 def calculate_score(resume_keywords, jd_keywords):
     matched_keywords = jd_keywords & resume_keywords
     missing_keywords = jd_keywords - resume_keywords
@@ -65,7 +69,7 @@ def calculate_score(resume_keywords, jd_keywords):
     match_score = round((matched / total) * 100, 2) if total > 0 else 0
     return match_score, matched_keywords, missing_keywords
 
-# === Generate smart suggestions ===
+# === Smart bullet suggestion generator ===
 def generate_suggestion(keyword):
     keyword = keyword.lower()
     suggestion_templates = {
@@ -73,28 +77,27 @@ def generate_suggestion(keyword):
         "snowflake": "✔ Implemented cloud-based data warehousing using Snowflake.",
         "aws": "✔ Deployed scalable data infrastructure using AWS services like S3, Lambda, and EC2.",
         "gcp": "✔ Built and managed big data solutions on Google Cloud Platform (GCP).",
-        "etl": "✔ Designed and optimized end-to-end ETL pipelines for real-time and batch processing.",
-        "sql": "✔ Developed complex SQL queries and stored procedures for analytics reporting.",
-        "python": "✔ Built data transformation scripts and machine learning pipelines using Python.",
-        "dbt": "✔ Created and documented transformation models using dbt for the analytics layer.",
-        "docker": "✔ Containerized applications and workflows using Docker for consistent deployment.",
-        "kubernetes": "✔ Managed container orchestration and deployment with Kubernetes.",
-        "ci/cd": "✔ Implemented CI/CD pipelines for automated testing and deployment.",
+        "etl": "✔ Designed and optimized ETL pipelines for real-time and batch processing.",
+        "sql": "✔ Developed complex SQL queries and stored procedures for reporting.",
+        "python": "✔ Built data pipelines and models using Python and data science libraries.",
+        "dbt": "✔ Created dbt models to transform warehouse data into analytics-ready tables.",
+        "docker": "✔ Containerized applications using Docker for reproducible deployment.",
+        "kubernetes": "✔ Managed containerized apps with Kubernetes for scaling.",
+        "ci/cd": "✔ Automated deployment with CI/CD pipelines using GitHub Actions and Jenkins.",
     }
     return suggestion_templates.get(
         keyword,
-        f"✔ Consider adding a strong bullet point that demonstrates hands-on experience with <b>{keyword}</b>."
+        f"✔ Consider adding a bullet point that shows hands-on experience with <b>{keyword}</b>."
     )
 
 # === Streamlit UI ===
 st.set_page_config(page_title="ATS Resume Analyzer", layout="wide")
 st.markdown("<h1 style='color:#2F80ED;'>📄 ATS Resume Analyzer</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#444;'>Upload your resume and paste the job description to get a match score and tailored suggestions to improve it.</p>", unsafe_allow_html=True)
+st.markdown("<p style='color:#444;'>Upload your resume and paste a job description to get a match score and AI suggestions.</p>", unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("📎 Upload Your Resume PDF", type=["pdf"])
 job_description = st.text_area("📋 Paste Job Description Text Here")
 
-# === Run the analysis ===
 if uploaded_file and job_description:
     if st.button("🔍 Analyze Resume"):
         with st.spinner("Analyzing your resume..."):
