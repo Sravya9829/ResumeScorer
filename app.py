@@ -3,20 +3,18 @@ import pdfplumber
 import spacy
 import warnings
 import logging
-import importlib
 
-# === Suppress warnings ===
+# === Suppress warnings and logs ===
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
-# === Load spaCy model with automatic download ===
+# === Load spaCy model or fallback to blank English ===
 try:
     nlp = spacy.load("en_core_web_sm")
-except OSError:
-    import spacy.cli
-    spacy.cli.download("en_core_web_sm")
-    importlib.invalidate_caches()
-    nlp = spacy.load("en_core_web_sm")
+except:
+    nlp = spacy.blank("en")
+    if "sentencizer" not in nlp.pipe_names:
+        nlp.add_pipe("sentencizer")
 
 # === Extract text from uploaded PDF ===
 def extract_text_from_pdf(uploaded_file):
@@ -28,7 +26,7 @@ def extract_text_from_pdf(uploaded_file):
                 text += page_text + "\n"
     return text
 
-# === Filter out irrelevant keywords ===
+# === Filter irrelevant keywords ===
 def is_relevant_keyword(keyword):
     irrelevant = {
         "the needs", "their needs", "a focus", "customer", "user", "project", "projects", "stakeholders",
@@ -41,7 +39,7 @@ def is_relevant_keyword(keyword):
         and not keyword.startswith(("the ", "your ", "our "))
     )
 
-# === Extract only technical keywords from useful sentences ===
+# === Extract keywords from job/resume text ===
 def extract_keywords(text):
     doc = nlp(text)
     valid_keywords = set()
@@ -51,11 +49,12 @@ def extract_keywords(text):
             "experience", "proficient", "familiar", "design", "develop", "build",
             "manage", "implement", "hands-on", "expertise", "knowledge", "skills in", "tools like"
         ]):
-            for chunk in sent.noun_chunks:
-                keyword = chunk.text.strip().lower()
+            for token in sent:
+                keyword = token.text.strip().lower()
                 if (
                     len(keyword) > 2
                     and not keyword.isnumeric()
+                    and keyword.isalpha()
                     and is_relevant_keyword(keyword)
                 ):
                     valid_keywords.add(keyword)
@@ -70,7 +69,7 @@ def calculate_score(resume_keywords, jd_keywords):
     match_score = round((matched / total) * 100, 2) if total > 0 else 0
     return match_score, matched_keywords, missing_keywords
 
-# === Suggestion generator ===
+# === Suggest missing skills ===
 def generate_suggestion(keyword):
     keyword = keyword.lower()
     suggestion_templates = {
@@ -96,11 +95,10 @@ st.set_page_config(page_title="ATS Resume Analyzer", layout="wide")
 st.markdown("<h1 style='color:#2F80ED;'>📄 ATS Resume Analyzer</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#444;'>Upload your resume and paste the job description to get a match score and tailored suggestions to improve it.</p>", unsafe_allow_html=True)
 
-# === Upload and input ===
 uploaded_file = st.file_uploader("📎 Upload Your Resume PDF", type=["pdf"])
 job_description = st.text_area("📋 Paste Job Description Text Here")
 
-# === Analyze Button ===
+# === Run analysis ===
 if uploaded_file and job_description:
     if st.button("🔍 Analyze Resume"):
         with st.spinner("Analyzing your resume..."):
@@ -109,7 +107,7 @@ if uploaded_file and job_description:
             jd_keywords = extract_keywords(job_description)
             score, matched, missing = calculate_score(resume_keywords, jd_keywords)
 
-        # === Display Score ===
+        # Score display
         color = "#27ae60" if score >= 75 else "#f39c12" if score >= 50 else "#c0392b"
         st.markdown(f"<h3 style='color:{color}'>✅ Match Score: {score}/100</h3>", unsafe_allow_html=True)
         st.progress(score / 100)
