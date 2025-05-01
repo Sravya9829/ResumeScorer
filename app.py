@@ -3,20 +3,22 @@ import pdfplumber
 import spacy
 import warnings
 import logging
+import os
 import importlib.util
 
-# Suppress warnings and noisy logs
+# Suppress warnings and logs
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
-# === Load spaCy model with permission-safe fallback ===
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
+# === Load spaCy model locally (Streamlit Cloud-safe) ===
+MODEL_DIR = "./model/en_core_web_sm"
+
+if not os.path.isdir(MODEL_DIR):
     import spacy.cli
-    spacy.cli.download("en_core_web_sm")
+    spacy.cli.download("en_core_web_sm", "--direct", "--path", "./model")
     importlib.invalidate_caches()
-    nlp = spacy.load("en_core_web_sm")
+
+nlp = spacy.load(MODEL_DIR)
 
 # === Extract text from uploaded PDF ===
 def extract_text_from_pdf(uploaded_file):
